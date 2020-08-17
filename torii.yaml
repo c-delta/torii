@@ -1,0 +1,10 @@
+host: "0.0.0.0"
+ssl:
+  enable: False
+  cert: ""
+  key: ""
+  pem: ""
+port: 8001
+name: Testing
+version: v1
+max_packet_size: 4096
