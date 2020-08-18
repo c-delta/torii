@@ -2,14 +2,16 @@ package server
 
 import (
 	"fmt"
+	"os"
+
 	// "net"
 	"crypto/rand"
 	"crypto/tls"
 	"time"
 
+	tlsreuse "github.com/c-delta/go-tlsreuse"
 	"github.com/c-delta/torii/utils"
 	reuse "github.com/libp2p/go-reuseport"
-	tlsreuse "github.com/c-delta/go-tlsreuse"
 )
 
 var toriilogo = `
@@ -66,7 +68,7 @@ func (s *Server) Start() {
 }
 
 func (s *Server) Stop() {
-
+	os.Exit(0)
 }
 
 // NewTask 建立新處理任務
@@ -126,6 +128,8 @@ func (s *Server) newServer() {
 }
 
 func init() {
+	conf := utils.Config()
+
 	fmt.Println(toriilogo)
 
 	fmt.Printf("%s%s%s\n", topLeftBorder,
@@ -149,6 +153,6 @@ func init() {
 		bottomRightBorder)
 
 	fmt.Printf("Server Version: %s, MaxPacketSize: %d\n",
-		utils.Config().Version,
-		utils.Config().MaxPacketSize)
+		conf.Version,
+		conf.MaxPacketSize)
 }

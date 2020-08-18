@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"net"
+
 	// "fmt"
 	"github.com/c-delta/torii/pack"
 )
@@ -131,22 +132,18 @@ func (h *HandlerManager) AcceptTasks(conn net.Conn) {
 			// fmt.Println(err)
 			conn.Close()
 			return
-		} else {
-			handler, err := h.Get(msg.Version, msg.ID)
-			
-			if msg.ID < 10 {
-				conn.Close()
-				return
-			}
-			if err != nil {
-				panic(err)
-			} else {
-				task := *handler.Handler
-				err := task(conn)
-				if err != nil {
-					break
-				}
-			}
 		}
+		handler, err := h.Get(msg.Version, msg.ID)
+
+		if (err != nil) || (msg.ID < 10) {
+			conn.Close()
+			return
+		}
+		task := *handler.Handler
+		err = task(conn)
+		if err != nil {
+			break
+		}
+
 	}
 }
