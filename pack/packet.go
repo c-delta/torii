@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+
 	"io"
 	"net"
 
@@ -14,7 +15,7 @@ import (
 // Packet 定義封包
 type Packet struct {
 	MaxPacketSize uint32
-	Connection net.Conn
+	Connection    net.Conn
 }
 
 // NewPacket 建立新封包
@@ -47,7 +48,7 @@ func (p *Packet) Pack(msg Message) ([]byte, error) {
 	if err := binary.Write(Buffer, binary.BigEndian, msg.GetDataLength()); err != nil {
 		return nil, err
 	}
-	fmt.Println(msg.GetData())
+	// fmt.Println(msg.GetData())
 	// 在緩衝區寫入資料
 	if err := binary.Write(Buffer, binary.BigEndian, msg.GetData()); err != nil {
 		return nil, err
@@ -117,7 +118,7 @@ func (p *Packet) Read(conn net.Conn) (*Message, error) {
 		msg.Data = make([]byte, msg.GetDataLength())
 
 		_, err = io.ReadFull(conn, msg.Data)
-		fmt.Println(msg.Data)
+		// fmt.Println(msg.Data)
 		if err != nil {
 			return nil, err
 		}
