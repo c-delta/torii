@@ -8,6 +8,7 @@ import (
 
 	"io"
 	"net"
+	"strconv"
 
 	"github.com/c-delta/torii/utils"
 )
@@ -15,13 +16,20 @@ import (
 // Packet 定義封包
 type Packet struct {
 	MaxPacketSize uint32
-	Connection    net.Conn
+	Connection    *net.Conn
 }
 
 // NewPacket 建立新封包
 func NewPacket() *Packet {
 	return &Packet{
 		MaxPacketSize: uint32(utils.Config().MaxPacketSize),
+	}
+}
+
+// NewMaxSizePacket 建立自定義最大封包長度
+func NewMaxSizePacket(size uint32) *Packet {
+	return &Packet{
+		MaxPacketSize: size,
 	}
 }
 
@@ -78,7 +86,7 @@ func (p *Packet) Unpack(buffer []byte) (*Message, error) {
 	}
 
 	if p.MaxPacketSize > 0 && msg.DataLength > p.MaxPacketSize {
-		return nil, errors.New(fmt.Sprintf("msg data is too large. DataLength: %d", msg.DataLength))
+		return nil, fmt.Errorf("msg data is too large. DataLength: %d", msg.DataLength)
 	}
 
 	return msg, nil
@@ -105,7 +113,6 @@ func (p *Packet) Read(conn net.Conn) (*Message, error) {
 	_, err := io.ReadFull(conn, headerBuffer)
 	if err != nil {
 		return nil, err
-		panic(err)
 	}
 
 	headOnlyMsg, err := p.Unpack(headerBuffer)
@@ -123,8 +130,174 @@ func (p *Packet) Read(conn net.Conn) (*Message, error) {
 			return nil, err
 		}
 		return msg, nil
-	} else {
-		return headOnlyMsg, errors.New("msg is empty")
+	}
+	return headOnlyMsg, errors.New("msg is empty")
+
+}
+
+// SmartWrite 自動辨識內容
+func (p *Packet) SmartWrite(anydata interface{}, conn net.Conn) error {
+	systembits := strconv.IntSize
+	var code uint32 = 1
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.LittleEndian, anydata)
+	if err != nil {
+		fmt.Println("binary.Write failed:", err)
+	}
+	switch v := anydata.(type) {
+	// String
+	case string:
+		code = 2
+	case []byte:
+		code = 3
+	case bool:
+		code = 4
+	case float32:
+		code = 5
+	case float64:
+		code = 6
+	case int:
+		if systembits == 32 {
+			code = 11
+		} else {
+			code = 12
+		}
+	case int8:
+		code = 16
+	case int16:
+		code = 17
+	case int32:
+		code = 18
+	case int64:
+		code = 19
+	case uint:
+		if systembits == 32 {
+			code = 31
+		} else {
+			code = 32
+		}
+	case uint8:
+		code = 36
+	case uint16:
+		code = 37
+	case uint32:
+		code = 38
+	case uint64:
+		code = 39
+	default:
+		return fmt.Errorf("can't process type: %s", v)
+	}
+	return p.Write(*NewCustomMessage(0, code, buf.Bytes()), conn)
+}
+
+// SmartRead 自動辨識接收內容
+func (p *Packet) SmartRead(conn net.Conn) (interface{}, error) {
+
+	msg, err := p.Read(conn)
+	if err != nil {
+		return nil, err
+	}
+	systembits := strconv.IntSize
+	buf := bytes.NewReader(msg.Data)
+	switch msg.ID {
+	// String
+	case 2:
+		return string(msg.Data), nil
+		// []Byte
+	case 3:
+		return msg.Data, nil
+		// Bool
+	case 4:
+		var boolean bool
+		err := binary.Read(buf, binary.LittleEndian, &boolean)
+		return boolean, err
+		// Float32
+	case 5:
+		var float float32
+		err := binary.Read(buf, binary.LittleEndian, &float)
+		return float, err
+		// Float64
+	case 6:
+		var float float64
+		err := binary.Read(buf, binary.LittleEndian, &float)
+		return float, err
+		// Int
+		// Remote system x86
+	case 11:
+		if systembits == 32 {
+			var intx32 int32
+			err := binary.Read(buf, binary.LittleEndian, &intx32)
+			return int(intx32), err
+		}
+		var intx64 int64
+		err := binary.Read(buf, binary.LittleEndian, &intx64)
+		return int(intx64), err
+
+		// Remote system x64
+	case 12:
+		if systembits == 32 {
+			return nil, errors.New("received int from x64 system cannot be converted to int32 or int")
+		}
+		var intx64 int64
+		err := binary.Read(buf, binary.LittleEndian, &intx64)
+		return int(intx64), err
+
+		// Int
+		// Remote system x86
+	case 31:
+		if systembits == 32 {
+			var uintx32 uint32
+			err := binary.Read(buf, binary.LittleEndian, &uintx32)
+			return uint(uintx32), err
+		}
+		var uintx64 int64
+		err := binary.Read(buf, binary.LittleEndian, &uintx64)
+		return uint(uintx64), err
+		// Remote system x64
+	case 32:
+		if systembits == 32 {
+			return nil, errors.New("received uint from x64 system cannot be converted to uint32 or uint")
+		}
+		var uintx64 uint64
+		err := binary.Read(buf, binary.LittleEndian, &uintx64)
+		return uint(uintx64), err
+
+		// Int Family
+	case 16:
+		var d int8
+		err := binary.Read(buf, binary.LittleEndian, &d)
+		return d, err
+	case 17:
+		var d int16
+		err := binary.Read(buf, binary.LittleEndian, &d)
+		return d, err
+	case 18:
+		var d int32
+		err := binary.Read(buf, binary.LittleEndian, &d)
+		return d, err
+	case 19:
+		var d int64
+		err := binary.Read(buf, binary.LittleEndian, &d)
+		return d, err
+		// Uint Family
+	case 36:
+		var d uint8
+		err := binary.Read(buf, binary.LittleEndian, &d)
+		return d, err
+	case 37:
+		var d uint16
+		err := binary.Read(buf, binary.LittleEndian, &d)
+		return d, err
+	case 38:
+		var d uint32
+		err := binary.Read(buf, binary.LittleEndian, &d)
+		return d, err
+	case 39:
+		var d uint64
+		err := binary.Read(buf, binary.LittleEndian, &d)
+		return d, err
+	default:
+		return nil, errors.New("undefined id, please check server and client version")
 	}
 
 }
